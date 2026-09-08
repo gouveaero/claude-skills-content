@@ -1,0 +1,14 @@
+{
+  "name": "reels-vhoe-runner",
+  "version": "2.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Helpers determinísticos do pipeline de Reels Vhoe. A geração de imagem/vídeo é via MCP do Magnific; estes scripts só fazem parse do roteiro e transferência de bytes. Sem dependências externas — Node 18+.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prompts": "node extrair-prompts.mjs",
+    "io": "node magnific-io.mjs"
+  }
+}

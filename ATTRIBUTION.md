@@ -16,6 +16,7 @@ Escritas do zero para operações de conteúdo de clientes. Cobertas pela licen�
 - `newsroom`
 - `newsroom-pro`
 - `instagram-download`
+- `reels-vhoe`
 
 ## Terceiros
 
@@ -31,3 +32,5 @@ Alterações de conteúdo feitas por mim nessas duas: nenhuma. De `last30days` f
 ## Material de cliente
 
 As skills `content-machine-clinic`, `content-machine-secret` e `semana-saif` embutem regras editoriais, paletas travadas e critérios de conformidade construídos para clientes específicos. Não há dado pessoal, credencial nem nome de paciente nelas, o que foi verificado antes da publicação. Ainda assim, o que está aqui é método de trabalho e não modelo genérico: adapte antes de usar em outro contexto.
+
+`reels-vhoe` embute a fórmula de conteúdo, o catálogo de aeronaves validadas e a voz da Vhoe, marca do próprio autor. O `voice_id` do ElevenLabs que aparece nela identifica a voz da marca e não é credencial. Vale o mesmo aviso: é método de trabalho, não modelo genérico.
