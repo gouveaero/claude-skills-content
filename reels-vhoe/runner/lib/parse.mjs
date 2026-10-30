@@ -10,7 +10,9 @@ export function parseRoteiroFile(filePath) {
 export function parseRoteiro(content, filePath = '') {
   const header = extractYamlHeader(content);
   const body = content.replace(/^---[\s\S]*?---\n?/, '');
-  const cenas = extractCenas(body);
+  // Impede que o overlay da última cena absorva narração, legenda e notas
+  // das seções seguintes. Roteiros antigos sem §4 continuam aceitos.
+  const cenas = extractCenas(extractSection(body, /##\s+4\./) || body);
 
   if (cenas.length === 0) {
     throw new Error(
@@ -25,10 +27,10 @@ export function parseRoteiro(content, filePath = '') {
 
   // Mescla prompts nas cenas
   for (const cena of cenas) {
-    if (!cena.promptNanoBanana && nanoBananaMap[cena.num]) {
+    if (nanoBananaMap[cena.num]) {
       cena.promptNanoBanana = nanoBananaMap[cena.num];
     }
-    if (!cena.promptKling && klingMap[cena.num]) {
+    if (klingMap[cena.num]) {
       cena.promptKling = klingMap[cena.num];
     }
   }
@@ -201,7 +203,9 @@ function extractKlingSection(body) {
   if (!sec7) return map;
 
   // Divide por "**Cena N**" ou "### Cena N"
-  const blockRe = /(?:#{1,3}|\*{0,2})\s*Cena\s+(\d+)\b[^\n]*\n([\s\S]*?)(?=(?:#{1,3}|\*{0,2})\s*Cena\s+\d+\b|^---\s*$|$)/gim;
+  // Com a flag m, "$" também casa no fim da primeira linha do prompt e
+  // descartava silenciosamente a linha Negative prompt. Usar fim absoluto.
+  const blockRe = /(?:#{1,3}|\*{0,2})\s*Cena\s+(\d+)\b[^\n]*\n([\s\S]*?)(?=(?:#{1,3}|\*{0,2})\s*Cena\s+\d+\b|^---\s*$|(?![\s\S]))/gim;
   let m;
   while ((m = blockRe.exec(sec7)) !== null) {
     const num = parseInt(m[1], 10);

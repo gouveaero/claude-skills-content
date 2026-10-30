@@ -8,7 +8,7 @@
 #   ./montar-reel.sh <pasta da missão> [proxy|final]
 #     proxy (default) → proxy.mp4 540x960 (revisão); final → final.mp4 1080x1920 H.264 CRF18
 #
-# Pré: edit_plan.json + narracao.mp3 + videos_kling/*.mp4 já na pasta da missão
+# Pré: edit_plan.json + narracao.mp3 + videos/*.mp4 (ou videos_kling/*.mp4) já na pasta da missão
 #      (gere com montar-reel-plan.mjs). .video-editor.json é criado com default Vhoe se faltar.
 set -euo pipefail
 
@@ -49,7 +49,13 @@ python3 "$VE_SKILL/scripts/build_remotion.py" --plan "$DIR/edit_plan.json" --rem
 
 # 3) copia assets (clipes + narração) — build_remotion NÃO copia esses
 mkdir -p "$REM/public/clips" "$REM/public/music"
-cp "$DIR"/videos_kling/*.mp4 "$REM/public/clips/" 2>/dev/null || true
+VDIR="$DIR/videos"; [ -d "$VDIR" ] || VDIR="$DIR/videos_kling"   # Higgsfield (06+) → videos/ · Magnific (01-04) → videos_kling/
+CLIP_AUDIO="${CLIP_AUDIO:-mute}"   # mute = clipes entram SEM faixa de áudio (Seedance/Kling 3 têm som nativo; a narração domina, cama via sfx/) · keep = mantém
+for f in "$VDIR"/*.mp4; do [ -e "$f" ] || continue; b="$(basename "$f")"
+  if [ "$CLIP_AUDIO" = "keep" ]; then cp "$f" "$REM/public/clips/$b"
+  else ffmpeg -nostdin -loglevel error -y -i "$f" -map 0:v:0 -c:v copy -an -movflags +faststart "$REM/public/clips/$b"; fi
+done
+if [ -d "$DIR/sfx" ]; then cp "$DIR"/sfx/*.wav "$REM/public/music/" 2>/dev/null || true; fi   # cama de SFX (montar-reel-plan.mjs --sfx-bed)
 cp "$DIR/narracao.mp3" "$REM/public/music/narracao.mp3"
 
 # 4) render

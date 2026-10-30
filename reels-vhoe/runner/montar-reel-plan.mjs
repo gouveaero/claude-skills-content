@@ -12,14 +12,18 @@
  *   ELEVENLABS_API_KEY=sk_... node montar-reel-plan.mjs \
  *     --dir "Reels_Feitos/em_producao/NN_codinome" [--config <.eleven.json>]
  *
- * Espera em <dir>: roteiro.md + videos_kling/cena_NN_v1.mp4 (1..scene_count).
- * Escreve em <dir>: narracao.mp3, edit_plan.json, timings.json (+ cena_NN_v1_slow.mp4 se preciso).
+ * Espera em <dir>: roteiro.md + videos/ (ou videos_kling/) com 1 clipe por cena, resolvido nesta ordem:
+ *   cena_NN.mp4 (escolhido) → cena_NN_kb.mp4 (Ken Burns) → cena_NN_v1.mp4.
+ * Escreve em <dir>: narracao.mp3, edit_plan.json, timings.json (+ cena_NN_v1_slow.mp4 se preciso;
+ *   com --sfx-bed <dB>, extrai o áudio nativo dos clipes que tiverem (Seedance/Kling 3) para sfx/sfx_cena_NN.wav
+ *   e os adiciona em plan.music[] como cama sob a narração — o montar-reel.sh copia sfx/*.wav pra public/music/).
  *
  * Config (.eleven.json, opcional — voice_id NÃO é segredo; a key vem de env):
  *   { "voice_id": "7i7dgyCkKt4c16dLtwT3", "model_id": "eleven_multilingual_v2",
  *     "voice_settings": { "stability": 0.45, "similarity_boost": 0.8, "style": 0.15, "use_speaker_boost": true } }
  */
-import { writeFile, readFile } from 'fs/promises';
+import { writeFile, readFile, mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { parseRoteiroFile } from './lib/parse.mjs';
 
@@ -33,6 +37,9 @@ const FFPROBE = process.env.FFPROBE || 'ffprobe';
 const KEY = process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_KEY;
 if (!DIR) { console.error('uso: --dir <pasta da missão>'); process.exit(1); }
 if (!KEY) { console.error('faltando ELEVENLABS_API_KEY no env'); process.exit(1); }
+// pasta de clipes: videos/ (Higgsfield, 06+) ou videos_kling/ (Magnific, 01-04)
+const VDIR = ['videos', 'videos_kling'].map(d => `${DIR}/${d}`).find(d => existsSync(d)) || `${DIR}/videos_kling`;
+const SFX_DB = getArg('--sfx-bed'); // ex.: --sfx-bed -18 → cama com o áudio nativo dos clipes em plan.music[] (default: sem cama)
 
 // palavras de marca que ganham destaque dourado (emphasis); números/modelos viram keyword (laranja) automático
 const EMPH = new Set((getArg('--emph') || 'brasil,brasileiro,fab,soberania,soberano,nacional,vhoe,gripen,meteor,invisível,stealth').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
@@ -79,20 +86,31 @@ const audioDur = ce[ce.length - 1] ?? words[words.length - 1].end;
 // 4) fronteiras de cena (meio da pausa) + clipes (slow se a cena > clipe)
 const scenes = SCENES.map((_, s) => { const ws = words.filter(w => w.scene === s); return { scene: s + 1, start: ws[0].start, end: ws[ws.length - 1].end }; });
 const cuts = scenes.map((sc, s) => s === scenes.length - 1 ? audioDur : (scenes[s].end + scenes[s + 1].start) / 2);
-const probe = f => parseFloat(execSync(`${FFPROBE} -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${DIR}/videos_kling/${f}"`).toString().trim());
+const probe = f => parseFloat(execSync(`${FFPROBE} -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${VDIR}/${f}"`).toString().trim());
+const hasAudio = f => execSync(`${FFPROBE} -v error -select_streams a -show_entries stream=codec_name -of csv=p=0 "${VDIR}/${f}"`).toString().trim() !== '';
 
-const v1 = []; let prev = 0;
+const v1 = [], sfx = []; let prev = 0;
+if (SFX_DB) await mkdir(`${DIR}/sfx`, { recursive: true });
 for (let s = 0; s < SCENES.length; s++) {
   const num = ordered[s].num;
   const dur = +(cuts[s] - prev).toFixed(3);
-  let clip = `cena_${String(num).padStart(2, '0')}_v1.mp4`;
+  const nn = String(num).padStart(2, '0');
+  // clipe da cena: escolhido explícito > Ken Burns > v1
+  let clip = [`cena_${nn}.mp4`, `cena_${nn}_kb.mp4`, `cena_${nn}_v1.mp4`].find(f => existsSync(`${VDIR}/${f}`)) || `cena_${nn}_v1.mp4`;
+  const src = clip; // original (fonte do SFX, antes de _slow)
   const origLen = probe(clip);
   if (dur > origLen - 0.05) {
     const factor = ((dur + 0.25) / origLen).toFixed(4);
     const slow = clip.replace('.mp4', '_slow.mp4');
-    execSync(`${FFMPEG} -nostdin -y -loglevel error -i "${DIR}/videos_kling/${clip}" -filter:v "setpts=${factor}*PTS" -an -c:v libx264 -crf 18 -pix_fmt yuv420p "${DIR}/videos_kling/${slow}"`);
+    execSync(`${FFMPEG} -nostdin -y -loglevel error -i "${VDIR}/${clip}" -filter:v "setpts=${factor}*PTS" -an -c:v libx264 -crf 18 -pix_fmt yuv420p "${VDIR}/${slow}"`);
     console.error(`  ↳ cena ${num}: desacelerada x${factor} p/ cobrir ${dur}s`);
     clip = slow;
+  }
+  if (SFX_DB && hasAudio(src)) {
+    const wav = `sfx_cena_${nn}.wav`;
+    execSync(`${FFMPEG} -nostdin -y -loglevel error -i "${VDIR}/${src}" -vn -t ${dur} -af "afade=t=in:d=0.15,afade=t=out:st=${Math.max(0, dur - 0.3).toFixed(3)}:d=0.3" -ac 2 -ar 44100 -c:a pcm_s16le "${DIR}/sfx/${wav}"`);
+    sfx.push({ file: wav, start_ms: Math.round(prev * 1000), end_ms: Math.round(cuts[s] * 1000), volume_db: +SFX_DB });
+    console.error(`  ↳ cena ${num}: SFX nativo → sfx/${wav} @ ${SFX_DB} dB`);
   }
   v1.push({ clip, source_in: 0, source_out: dur, zoom: 1.0, y_offset: 0, slug: `cena-${String(num).padStart(2, '0')}` });
   prev = cuts[s];
@@ -115,7 +133,7 @@ const plan = {
   name: (DIR.split('/').pop() || 'reel').replace(/[^a-z0-9-]/gi, '-').toLowerCase(),
   aspect: '9:16', fps: FPS, resolution: [1080, 1920], target_duration_s: +audioDur.toFixed(3),
   v1_main: v1, transitions: [], subtitle_track,
-  music: [{ file: 'narracao.mp3', start_ms: 0, volume_db: 0 }],
+  music: [{ file: 'narracao.mp3', start_ms: 0, volume_db: 0 }, ...sfx],
   color_correction: { css_filter: 'contrast(1.06) saturate(1.08)' },
 };
 await writeFile(`${DIR}/edit_plan.json`, JSON.stringify(plan, null, 2));

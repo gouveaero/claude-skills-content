@@ -1,6 +1,6 @@
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { mkdirSync } from 'fs';
+import { mkdirSync, existsSync } from 'fs';
 
 // lib/ → runner/ → reels-vhoe/ → skills/ → .claude/ → Projeto_Vhoe/
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,7 +17,8 @@ export function resolveReelDir(codinome) {
   const dir = join(REELS_DIR, 'em_producao', codinome);
   mkdirSync(join(dir, 'imagens'), { recursive: true });
   mkdirSync(join(dir, 'imagens_escolhidas'), { recursive: true });
-  mkdirSync(join(dir, 'videos_kling'), { recursive: true });
+  // Higgsfield (missão 06+) usa videos/; Magnific (01-04) usava videos_kling/. Não cria o segundo se o primeiro já existe.
+  if (!existsSync(join(dir, 'videos_kling'))) mkdirSync(join(dir, 'videos'), { recursive: true });
   return dir;
 }
 
@@ -34,7 +35,9 @@ export function resolveChosenImagesDir(codinome) {
 }
 
 export function resolveVideosDir(codinome) {
-  return join(REELS_DIR, 'em_producao', codinome, 'videos_kling');
+  const base = join(REELS_DIR, 'em_producao', codinome);
+  const v = join(base, 'videos');
+  return existsSync(v) ? v : join(base, 'videos_kling');
 }
 
 export function resolveIndice() {
